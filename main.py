@@ -1,11 +1,19 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
+from datetime import date
+from typing import List
+
 from database import SessionLocal
 from models import Expense
-from datetime import date
+from schemas import ExpenseCreate, ExpenseOut
 
-app = FastAPI(title="Family Expense App")
+app = FastAPI(
+    title="Family Expense App",
+    version="1.0.0",
+)
 
+
+# ---------- DB dependency ----------
 def get_db():
     db = SessionLocal()
     try:
@@ -13,26 +21,37 @@ def get_db():
     finally:
         db.close()
 
-@app.post("/expense")
-def add_expense(
-    amount: int,
-    category_id: int,
-    note: str,
-    spent_at: date,
-    user_id: str,
-    db: Session = Depends(get_db)
-):
-    e = Expense(
-        amount=amount,
-        category_id=category_id,
-        note=note,
-        spent_at=spent_at,
-        user_id=user_id
-    )
-    db.add(e)
-    db.commit()
+
+# ---------- Health check ----------
+@app.get("/")
+def root():
     return {"status": "ok"}
 
-@app.get("/expenses")
+
+# ---------- Create expense ----------
+@app.post("/expense", response_model=ExpenseOut)
+def add_expense(
+    payload: ExpenseCreate,
+    db: Session = Depends(get_db),
+):
+    expense = Expense(
+        amount=payload.amount,
+        category_id=payload.category_id,
+        note=payload.note,
+        spent_at=payload.spent_at,
+        user_id=payload.user_id,
+    )
+    db.add(expense)
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+# ---------- List expenses ----------
+@app.get("/expenses", response_model=List[ExpenseOut])
 def list_expenses(db: Session = Depends(get_db)):
-    return db.query(Expense).order_by(Expense.spent_at.desc()).all()
+    return (
+        db.query(Expense)
+        .order_by(Expense.spent_at.desc())
+        .all()
+    )
